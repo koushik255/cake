@@ -25,6 +25,7 @@ const context = canvas instanceof HTMLCanvasElement
   : null;
 
 let input = null;
+let transcodedAudioInput = null;
 let videoSink = null;
 let audioSink = null;
 let audioContext = null;
@@ -99,7 +100,12 @@ async function init() {
 async function preparePlayback(candidate) {
   setStatus(`Opening ${candidate.label} media URL...`);
   input = new Input({
-    source: new UrlSource(candidate.url),
+    // Live HLS playlists reuse the same URL while their contents grow. Force
+    // every refresh through to Cake instead of accepting a browser/proxy copy.
+    source: new UrlSource(candidate.url, {
+      requestInit: { cache: "no-store" },
+      fetchFn: diagnosticMediaFetch,
+    }),
     formats: ALL_FORMATS,
   });
 
@@ -116,9 +122,16 @@ async function preparePlayback(candidate) {
   setStatus("Reading timestamps...");
   firstTimestamp = Math.max(await input.getFirstTimestamp(tracks), 0);
   setStatus("Reading duration...");
-  endTimestamp = await input.getDurationFromMetadata(tracks, {
+  const currentlyAvailableEnd = await input.getDurationFromMetadata(tracks, {
     skipLiveWait: true,
   }) ?? await input.computeDuration(tracks, { skipLiveWait: true });
+  // A live HLS playlist initially contains only the first few transcoded
+  // segments. Keep the timeline at the source duration instead of stopping
+  // playback at the initial playlist edge; Mediabunny waits for new segments.
+  endTimestamp = typeof media.durationSeconds === "number" &&
+      Number.isFinite(media.durationSeconds)
+    ? Math.max(currentlyAvailableEnd, media.durationSeconds)
+    : currentlyAvailableEnd;
   playbackTimeAtStart = clampPlaybackTime(
     typeof media.playbackSeconds === "number"
       ? media.playbackSeconds
@@ -126,14 +139,15 @@ async function preparePlayback(candidate) {
   );
   durationElement.textContent = formatSeconds(endTimestamp);
 
-  let warning = "";
+  let videoWarning = "";
+  let audioWarning = "";
   if (videoTrack) {
     setStatus("Checking video codec...");
     if (await videoTrack.getCodec() === null) {
-      warning += "Unsupported video codec. ";
+      videoWarning = "Unsupported video codec. ";
       videoTrack = null;
     } else if (!(await videoTrack.canDecode())) {
-      warning +=
+      videoWarning =
         "This browser cannot decode the video track through WebCodecs. ";
       videoTrack = null;
     }
@@ -142,13 +156,36 @@ async function preparePlayback(candidate) {
   if (audioTrack) {
     setStatus("Checking audio codec...");
     if (await audioTrack.getCodec() === null) {
-      warning += "Unsupported audio codec. ";
+      audioWarning = "Unsupported audio codec. ";
       audioTrack = null;
     } else if (!(await audioTrack.canDecode())) {
-      warning +=
+      audioWarning =
         "This browser cannot decode the audio track through WebCodecs. ";
       audioTrack = null;
     }
+  }
+
+  // Keep the original, seekable video and replace only an unsupported audio
+  // track with a small server-generated Opus file.
+  if (!audioTrack && videoTrack && candidate.opusAudioUrl) {
+    setStatus("Preparing Opus audio fallback...");
+    transcodedAudioInput = new Input({
+      source: new UrlSource(candidate.opusAudioUrl, {
+        requestInit: { cache: "no-store" },
+      }),
+      formats: ALL_FORMATS,
+    });
+    const opusTrack = await transcodedAudioInput.getPrimaryAudioTrack();
+    if (opusTrack && await opusTrack.getCodec() !== null &&
+      await opusTrack.canDecode()) {
+      audioTrack = opusTrack;
+      audioWarning = "";
+    }
+  }
+
+  const warning = videoWarning + audioWarning;
+  if (videoWarning && candidate.fallbackOnUnsupportedVideo) {
+    throw new Error(videoWarning.trim());
   }
 
   if (!videoTrack && !audioTrack) {
@@ -191,12 +228,36 @@ async function preparePlayback(candidate) {
   updateSubtitle(playbackTimeAtStart);
 }
 
+async function diagnosticMediaFetch(resource, options) {
+  const response = await fetch(resource, { ...options, cache: "no-store" });
+  const url = response.url || String(resource);
+
+  if (new URL(url, location.href).pathname.endsWith(".m3u8")) {
+    console.info("[Cake HLS] Playlist fetched", {
+      url,
+      status: response.status,
+      cacheControl: response.headers.get("cache-control"),
+      cfCacheStatus: response.headers.get("cf-cache-status"),
+      age: response.headers.get("age"),
+      contentLength: response.headers.get("content-length"),
+      date: response.headers.get("date"),
+    });
+  }
+
+  return response;
+}
+
 function playbackCandidates() {
   const playback = media.playback;
-  if (playback?.directFirst && playback.directUrl && playback.transcodeUrl) {
+  if (playback?.directUrl && playback.transcodeUrl) {
     return [
-      { label: "direct", url: playback.directUrl },
-      { label: "server transcode", url: playback.transcodeUrl },
+      {
+        label: "direct video",
+        url: playback.directUrl,
+        opusAudioUrl: media.opusAudioUrl,
+        fallbackOnUnsupportedVideo: true,
+      },
+      { label: "full server transcode", url: playback.transcodeUrl },
     ];
   }
 
@@ -208,8 +269,10 @@ async function resetPlaybackAttempt() {
   await audioBuffers?.return();
   await audioContext?.close().catch(() => {});
   input?.dispose();
+  transcodedAudioInput?.dispose();
 
   input = null;
+  transcodedAudioInput = null;
   videoSink = null;
   audioSink = null;
   audioContext = null;
@@ -705,7 +768,7 @@ function showFullscreenControls() {
 function scheduleFullscreenControlsHide() {
   showFullscreenControls();
 
-  if (!fullscreenActive()) {
+  if (!fullscreenActive() || !playing) {
     return;
   }
 
@@ -739,6 +802,10 @@ nextEpisodeButton.addEventListener("click", () => {
 });
 
 fullscreenButton.addEventListener("click", () => {
+  toggleFullscreen().catch(showError);
+});
+
+canvas.addEventListener("dblclick", () => {
   toggleFullscreen().catch(showError);
 });
 
@@ -778,6 +845,34 @@ document.addEventListener("webkitfullscreenchange", () => {
 document.addEventListener("visibilitychange", () => {
   if (document.visibilityState === "visible" && playing) {
     requestWakeLock();
+  }
+});
+
+document.addEventListener("keydown", (event) => {
+  if (!fullscreenActive()) return;
+
+  const target = event.target;
+  if (
+    target instanceof HTMLInputElement ||
+    target instanceof HTMLSelectElement ||
+    target instanceof HTMLButtonElement
+  ) {
+    return;
+  }
+
+  if (event.key === " " || event.key.toLowerCase() === "k") {
+    event.preventDefault();
+    if (playing) pause();
+    else play().catch(showError);
+  } else if (event.key === "ArrowLeft") {
+    event.preventDefault();
+    seekTo(clampPlaybackTime(getPlaybackTime() - 10)).catch(showError);
+  } else if (event.key === "ArrowRight") {
+    event.preventDefault();
+    seekTo(clampPlaybackTime(getPlaybackTime() + 10)).catch(showError);
+  } else if (event.key.toLowerCase() === "f") {
+    event.preventDefault();
+    toggleFullscreen().catch(showError);
   }
 });
 

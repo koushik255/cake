@@ -1,0 +1,51 @@
+:root {
+  font-family: Inter, ui-sans-serif, system-ui, sans-serif;
+  color: #181818;
+  background: #f5f5f3;
+}
+* { box-sizing: border-box; }
+body { margin: 0; }
+a { color: inherit; text-decoration: none; }
+.shell { max-width: 1180px; margin: auto; padding: 0 24px 64px; }
+.profile-bar { height: 64px; display: flex; align-items: center; gap: 28px; border-bottom: 1px solid #ddd; margin-bottom: 36px; }
+.profile-bar .brand { font-size: 21px; font-weight: 800; margin-right: auto; }
+.profile-bar nav { display: flex; gap: 20px; }
+button, input, select { font: inherit; border: 1px solid #bbb; border-radius: 4px; padding: 9px 12px; background: white; }
+button { cursor: pointer; background: #202124; color: white; border-color: #202124; }
+.page-header { display: flex; justify-content: space-between; align-items: end; margin-bottom: 30px; }
+.page-header h1, h1 { font-size: 32px; margin: 3px 0; letter-spacing: 0; }
+.eyebrow { text-transform: uppercase; font-size: 12px; font-weight: 800; color: #ad3d32; }
+.muted { color: #666; }
+.catalog-heading, .section-heading { display: flex; align-items: center; justify-content: space-between; margin: 30px 0 15px; }
+.library-search { width: 220px; }
+.title-grid { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 12px; }
+.title-tile, .episode-tile { display: flex; flex-direction: column; gap: 8px; background: white; border: 1px solid #ddd; border-radius: 6px; padding: 18px; min-width: 0; }
+.title-tile:hover, .episode-tile:hover { border-color: #555; }
+.title-tile span, .episode-number { font-size: 13px; color: #666; }
+.episode-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px; }
+.last-watched { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 12px; }
+.last-watched-card { background: white; border: 1px solid #ddd; border-radius: 6px; overflow: hidden; display: flex; flex-direction: column; }
+.last-watched-card img { width: 100%; aspect-ratio: 16/9; object-fit: cover; background: #111; }
+.last-watched-card strong, .last-watched-card span { padding: 8px 12px 0; }
+.last-watched-card span { padding-top: 0; padding-bottom: 10px; color: #666; font-size: 13px; }
+.profile-list { max-width: 620px; margin: 15vh auto; }
+.profile-buttons { display: flex; gap: 12px; flex-wrap: wrap; margin: 30px 0; }
+.profile-button { min-width: 120px; }
+.add-profile { border-top: 1px solid #ddd; padding-top: 24px; }
+.add-profile label { display: block; margin-bottom: 8px; }
+.player-frame { position: relative; background: #000; width: 100%; aspect-ratio: 16/9; display: flex; align-items: center; justify-content: center; }
+.player-frame canvas { max-width: 100%; max-height: 100%; }
+.subtitle-overlay { position: absolute; bottom: 8%; left: 5%; right: 5%; text-align: center; color: white; font-size: 24px; text-shadow: 0 2px 4px #000; }
+.player-controls { display: flex; gap: 9px; align-items: center; flex-wrap: wrap; }
+.player-controls input { flex: 1; min-width: 160px; }
+.error { color: #b42318; }
+.warning { color: #8a4b00; }
+.path { overflow-wrap: anywhere; }
+.library-update-banner { position: fixed; left: 50%; bottom: 16px; transform: translateX(-50%); display: flex; align-items: center; gap: 12px; background: #202124; color: white; padding: 10px 12px; border-radius: 4px; }
+.library-update-banner button { background: white; color: #202124; }
+@media (max-width: 760px) {
+  .title-grid, .last-watched { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .episode-grid { grid-template-columns: 1fr; }
+  .profile-bar { gap: 14px; }
+  .shell { padding: 0 16px 40px; }
+}

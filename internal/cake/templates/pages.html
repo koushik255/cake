@@ -1,0 +1,178 @@
+{{define "head"}}
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <title>{{.Title}} - Cake</title>
+  <link rel="icon" href="/favicon.svg">
+  <link rel="stylesheet" href="/app.css">
+</head>
+<body>
+  <div class="shell">
+    {{with .Profile}}
+    <header class="profile-bar">
+      <a class="brand" href="/">Cake</a>
+      <nav><a href="/movies">Movies</a><a href="/shows">Shows</a></nav>
+      <a href="/profiles">{{.Name}}</a>
+    </header>
+    {{end}}
+{{end}}
+
+{{define "foot"}}
+  </div>
+  <script>
+    const search = document.querySelector('#library-search');
+    search?.addEventListener('input', () => {
+      const query = search.value.toLowerCase();
+      document.querySelectorAll('[data-library-row]').forEach((row) => {
+        row.hidden = !row.dataset.search.includes(query);
+      });
+    });
+  </script>
+  {{if .Poll}}
+  <script>
+    (() => {
+      const baseline = {{.Library.ScannedAt}};
+      setInterval(async () => {
+        try {
+          const response = await fetch('/api/library-version', {cache: 'no-store'});
+          if (!response.ok) return;
+          const version = await response.json();
+          if (version.scannedAt === baseline || document.querySelector('.library-update-banner')) return;
+          const banner = document.createElement('div');
+          banner.className = 'library-update-banner';
+          banner.innerHTML = '<span>Library updated</span><button type="button">Refresh</button>';
+          banner.querySelector('button').onclick = () => location.reload();
+          document.body.append(banner);
+        } catch {}
+      }, {{pollMillis .Config.LibraryUpdatePollSeconds}});
+    })();
+  </script>
+  {{end}}
+</body>
+</html>
+{{end}}
+
+{{define "pageHeader"}}
+<header class="page-header">
+  <div>
+    <p class="eyebrow">Cake library</p>
+    <h1>{{.Heading}}</h1>
+    <p class="muted">{{.Subtitle}}</p>
+  </div>
+  <form method="post" action="/rescan"><button class="secondary" type="submit">Rescan</button></form>
+</header>
+{{end}}
+
+{{define "catalogTools"}}
+<div class="catalog-heading">
+  {{if .BackURL}}<a class="back-link" href="{{.BackURL}}">Back</a>{{end}}
+  <input id="library-search" class="library-search" type="search" placeholder="Search library" aria-label="Search library">
+</div>
+{{end}}
+
+{{define "movieGrid"}}
+{{if .}}
+<div class="title-grid">
+  {{range .}}
+  <a class="title-tile" href="/watch/{{pathEscape .ID}}" data-library-row data-search="{{searchText (displayTitle .) .RelativePath}}">
+    <strong>{{displayTitle .}}</strong>
+    <span>{{mediaDetail .}}</span>
+  </a>
+  {{end}}
+</div>
+{{else}}<p class="empty">No videos found yet.</p>{{end}}
+{{end}}
+
+{{define "showGrid"}}
+{{if .}}
+<div class="title-grid">
+  {{range .}}
+  <a class="title-tile" href="/shows/{{pathEscape .ID}}" data-library-row data-search="{{searchText .Title}}">
+    <strong>{{.Title}}</strong>
+    <span>{{len .Episodes}} episodes</span>
+  </a>
+  {{end}}
+</div>
+{{else}}<p class="empty">No videos found yet.</p>{{end}}
+{{end}}
+
+{{define "profiles"}}
+{{template "head" .}}
+<section class="profile-list">
+  <p class="eyebrow">Cake</p><h1>Who's watching?</h1>
+  <div class="profile-buttons">
+    {{range .Profiles}}
+    <form method="post" action="/profiles/select/{{pathEscape .ID}}"><button class="profile-button" type="submit">{{.Name}}</button></form>
+    {{end}}
+  </div>
+  <form class="add-profile" method="post" action="/profiles">
+    <label for="profile-name">Add a profile</label>
+    <div><input id="profile-name" name="name" placeholder="Name" autocomplete="off"><button type="submit">Add</button></div>
+  </form>
+</section>
+{{template "foot" .}}
+{{end}}
+
+{{define "home"}}
+{{template "head" .}}{{template "pageHeader" .}}
+{{if .Recent}}
+<section><div class="section-heading"><h2>Continue watching</h2></div><div class="last-watched">
+  {{range .Recent}}
+  <a class="last-watched-card" href="/watch/{{pathEscape .Item.ID}}">
+    <img src="/thumbnails/{{pathEscape .Item.ID}}.jpg?at={{playbackPosition .}}" loading="lazy" alt="Frame from {{displayTitle .Item}}">
+    <strong>{{displayTitle .Item}}</strong><span>Resume at {{resumeTime .}}</span>
+  </a>
+  {{end}}
+</div></section>
+{{end}}
+{{template "catalogTools" .}}
+<section><div class="section-heading"><h2>Shows</h2><a href="/shows">View all</a></div>{{template "showGrid" .Shows}}</section>
+<section><div class="section-heading"><h2>Movies</h2><a href="/movies">View all</a></div>{{template "movieGrid" .Movies}}</section>
+{{template "foot" .}}
+{{end}}
+
+{{define "movies"}}
+{{template "head" .}}{{template "pageHeader" .}}{{template "catalogTools" .}}{{template "movieGrid" .Movies}}{{template "foot" .}}
+{{end}}
+
+{{define "shows"}}
+{{template "head" .}}{{template "pageHeader" .}}{{template "catalogTools" .}}{{template "showGrid" .Shows}}{{template "foot" .}}
+{{end}}
+
+{{define "show"}}
+{{template "head" .}}{{template "pageHeader" .}}{{template "catalogTools" .}}
+<div class="episode-grid">
+  {{range .Show.Episodes}}
+  <a class="episode-tile" href="/watch/{{pathEscape .ID}}" data-library-row data-search="{{searchText (episodeNumber .) .EpisodeTitle}}">
+    <span class="episode-number">{{episodeNumber .}}</span><strong>{{episodeTitle .}}</strong>
+  </a>
+  {{end}}
+</div>
+{{template "foot" .}}
+{{end}}
+
+{{define "player"}}
+{{template "head" .}}
+<p class="back-link"><a href="/">Home</a></p><h1>{{displayTitle .Item}}</h1>
+<p class="muted">{{mediaMetadata .Item}}</p>
+{{if .Item.MetadataError}}<p class="error">{{.Item.MetadataError}}</p>{{end}}
+<div data-mediabunny-player data-media-id="{{.Item.ID}}">
+  <p id="player-status" class="muted">Loading player...</p>
+  <p id="player-warning" class="warning" hidden></p><p id="player-error" class="error" hidden></p>
+  <div class="player-frame"><canvas id="mediabunny-canvas"></canvas><div id="subtitle-overlay" class="subtitle-overlay"></div></div>
+  <p class="player-controls">
+    <button id="play-button" type="button" disabled>Play</button><button id="stop-button" type="button" disabled>Stop</button>
+    <button id="next-episode-button" type="button" hidden>Next episode</button><button id="fullscreen-button" type="button">Fullscreen</button>
+    <select id="subtitle-select" disabled><option value="">Subtitles off</option></select><span id="current-time">0:00</span>
+    <input id="progress" type="range" min="0" max="1" step="0.001" value="0" disabled><span id="duration">0:00</span>
+  </p>
+</div>
+<script type="module" src="/player.js?v=20260718-3"></script><p class="muted path">{{.Item.RelativePath}}</p>
+{{template "foot" .}}
+{{end}}
+
+{{define "notFound"}}
+{{template "head" .}}<main class="empty"><p class="eyebrow">404</p><h1>Not found</h1><p><a href="/">Return home</a></p></main>{{template "foot" .}}
+{{end}}

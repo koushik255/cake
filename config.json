@@ -1,12 +1,15 @@
 {
-  "mediaDir": "/Users/koushik/media",
+  "mediaDir": "/home/koushik/MEDIA",
   "libraryFile": "./library.json",
   "hostname": "127.0.0.1",
   "port": 8080,
   "playbackMode": "auto",
   "transcodeCacheDir": ".cache/transcodes",
+  "transcodeCacheMaxAgeHours": 24,
   "maxTranscodes": 1,
-  "hardwareAcceleration": "auto",
+  "hardwareAcceleration": "prefer-software",
+  "transcodeVideoMode": "avc",
+  "transcodeAudioCodec": "opus",
   "autoScan": true,
   "autoScanDelaySeconds": 10,
   "libraryUpdatePollSeconds": 20
